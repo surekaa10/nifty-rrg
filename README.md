@@ -155,10 +155,16 @@ different quadrant** under the document's weighting than under equal weight.
   over three years of prices is survivorship bias, and no free source fixes it.
 - NSE's **IWF** is an exact published figure; `floatShares / sharesOutstanding`
   is Yahoo's estimate of the same thing.
-- Four caps depend on data absent from the constituent CSV -- Mobility's
-  basic-industry split, Conglomerate's group membership, Railways' core/non-core
-  split, Manufacturing's sector floors. Each is flagged in the matching
-  `RULES[...]["note"]` and printed by `--rules`.
+- Two caps depend on data absent from the constituent CSV, which carries the
+  *macro* sector ("Oil Gas & Consumable Fuels") rather than the *basic industry*
+  ("Refineries & Marketing") the document caps on. NSE serves basic industry
+  only through an API that refuses server-side requests, so `themes.py`
+  hand-maps both: `MOBILITY_BASIC` (Table 2 of that section -- 5% on those
+  stocks and 20% on their sectors, 8% elsewhere) and `CONGLOMERATE_GROUP`
+  (business group, for the 23% group cap). Re-check both after an NSE review.
+- Two caps are still not applied: Railways' core/non-core 80-20 split and
+  Manufacturing's 20% sector floors. Both are flagged in `RULES[...]["note"]`
+  and printed by `--rules`.
 
 So index **levels** will not match NSE's published values. Quadrant and rotation
 direction -- what an RRG is actually read for -- are far less sensitive to all

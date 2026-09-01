@@ -55,6 +55,26 @@ def prices(symbols, period="3y", interval="1wk", refresh=False) -> pd.DataFrame:
     return raw
 
 
+def split_rule(name, syms, rule, industry):
+    """Resolve an index whose cap is not uniform into (rule, groups).
+
+    Two indices cap on something the constituent CSV does not carry: Mobility
+    on basic industry, Conglomerate 50 on business group. `themes` hand-maps
+    both; everything else caps on the CSV's own Industry column.
+    """
+    kind = rule.get("split")
+    if kind == "mobility":
+        cap, basic, gcap = th.mobility_caps(syms)
+        cap.index = [nse(i) for i in cap.index]
+        basic.index = [nse(i) for i in basic.index]
+        return {**rule, "stock_cap": cap, "sector_cap": gcap}, basic
+    if kind == "conglomerate":
+        grp = pd.Series({nse(x): th.CONGLOMERATE_GROUP.get(x, "Other")
+                         for x in syms})
+        return rule, grp
+    return rule, industry
+
+
 def series(members, px, shares, index_of=None, rules=None, industries=None):
     """One column per group: its real NSE index if Yahoo has one, else the
     index rebuilt from constituents the way the methodology document specifies.
@@ -72,12 +92,15 @@ def series(members, px, shares, index_of=None, rules=None, industries=None):
         cols = [nse(s) for s in syms if nse(s) in px.columns]
         if len(cols) < 5:
             continue
-        rule = rules.get(name, SECTOR_RULE)
-        ind = industries.get(name)
+        rule, ind = split_rule(name, syms, rules.get(name, SECTOR_RULE),
+                               industries.get(name))
         lvl = wt.index_level(px[cols], shares, rule, ind)
         if not lvl.empty:
             out[name] = lvl
-            src[name] = "ff-cap %d@%.1f%%" % (len(cols), 100 * rule["stock_cap"])
+            cap = rule["stock_cap"]
+            label = ("%.0f-%.0f%%" % (100 * cap.min(), 100 * cap.max())
+                     if hasattr(cap, "min") else "%.1f%%" % (100 * cap))
+            src[name] = "ff-cap %d@%s" % (len(cols), label)
     return pd.DataFrame(out), pd.Series(src, name="src")
 
 
@@ -204,6 +227,21 @@ def demo():
     up = pd.DataFrame({"UP": b * 1.004 ** np.arange(120)}, index=idx)
     r, m = rrg_coords(up, b)
     assert table(r, m).Quadrant.iloc[0] in STRONG
+
+    # Mobility's split cap must reach the builder as a per-name Series
+    rule, grp = split_rule("MOBILITY", ["RELIANCE", "MARUTI"],
+                           th.RULES["MOBILITY"], None)
+    assert rule["stock_cap"]["RELIANCE.NS"] == 0.05, rule["stock_cap"]
+    assert rule["stock_cap"]["MARUTI.NS"] == 0.08
+    assert rule["sector_cap"]["Refineries & Marketing"] == 0.20
+    assert grp["RELIANCE.NS"] == "Refineries & Marketing"
+    # Conglomerate caps on business group, not the CSV industry column
+    _, cg = split_rule("CONGLOMERATE 50", ["TCS", "ADANIENT"],
+                       th.RULES["CONGLOMERATE 50"], None)
+    assert cg["TCS.NS"] == "Tata" and cg["ADANIENT.NS"] == "Adani", cg
+    # an ordinary index is passed through untouched
+    r2, i2 = split_rule("WAVES", ["ZEEL"], th.RULES["WAVES"], "keepme")
+    assert r2 is th.RULES["WAVES"] and i2 == "keepme"
     print("ok")
 
 

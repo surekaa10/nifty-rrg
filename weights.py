@@ -54,34 +54,47 @@ def cap_weights(w: pd.Series, stock_cap=None, groups=None, group_cap=None,
     Excess weight above a cap is taken off the capped names and handed to the
     uncapped ones in proportion to what they already hold, repeatedly, until
     nothing breaches. `groups` maps each index label to its sector/group.
+
+    `stock_cap` is a single number, or a Series of per-name caps when the index
+    caps different constituents differently (Nifty Mobility does). `group_cap`
+    is a single number applied to every group, or a {group: cap} mapping when
+    only some groups are capped (again Mobility - only the Table 2 sectors).
     """
     w = w[w > 0].astype(float)
     if w.empty:
         return w
     w = w / w.sum()
-    # an infeasible cap (n * cap <= 1) has exactly one solution: equal weight.
-    # Without this the redistribution loop just oscillates forever.
-    if stock_cap is not None and len(w) * stock_cap <= 1 + 1e-12:
-        return pd.Series(1.0 / len(w), index=w.index)
+    cap = None
+    if stock_cap is not None:
+        cap = (stock_cap.reindex(w.index).fillna(stock_cap.max())
+               if isinstance(stock_cap, pd.Series)
+               else pd.Series(float(stock_cap), index=w.index))
+        # caps that cannot sum to 1 have exactly one solution: everyone at cap,
+        # renormalised. Without this the redistribution loop oscillates forever.
+        if cap.sum() <= 1 + 1e-12:
+            return cap / cap.sum()
 
     for _ in range(rounds):
         moved = False
-        if stock_cap is not None:
-            over = w > stock_cap + 1e-12
+        if cap is not None:
+            over = w > cap + 1e-12
             if over.any() and (~over).any():
-                excess = float((w[over] - stock_cap).sum())
-                w[over] = stock_cap
+                excess = float((w[over] - cap[over]).sum())
+                w[over] = cap[over]
                 free = w[~over]
                 w[~over] = free + excess * free / free.sum()
                 moved = True
         if groups is not None and group_cap is not None:
+            gcap = (group_cap if isinstance(group_cap, dict)
+                    else {k: group_cap for k in groups.unique()})
             g = w.groupby(groups).sum()
-            hot = g[g > group_cap + 1e-12]
+            hot = pd.Series({k: v for k, v in g.items()
+                             if k in gcap and v > gcap[k] + 1e-12})
             if len(hot) and len(g) > len(hot):
-                excess = float((hot - group_cap).sum())
+                excess = float(sum(v - gcap[k] for k, v in hot.items()))
                 for name in hot.index:                 # scale the group to its cap
                     m = groups.reindex(w.index) == name
-                    w[m] *= group_cap / g[name]
+                    w[m] *= gcap[name] / g[name]
                 cool = ~groups.reindex(w.index).isin(hot.index)
                 if w[cool].sum() > 0:
                     w[cool] += excess * w[cool] / w[cool].sum()
@@ -173,6 +186,20 @@ def demo():
     c3 = cap_weights(pd.Series({"A": 0.9, "B": 0.05, "C": 0.05}), stock_cap=0.2)
     assert abs(c3.sum() - 1) < 1e-9 and c3.notna().all()
     assert (abs(c3 - 1 / 3) < 1e-9).all(), c3
+
+    # per-name caps: only the named stock is held to the tighter limit
+    pc = pd.Series({"A": 0.05, "B": 0.20, "C": 0.20, "D": 0.20, "E": 0.20, "F": 0.20})
+    c7 = cap_weights(pd.Series({"A": .5, "B": .1, "C": .1, "D": .1, "E": .1, "F": .1}),
+                     stock_cap=pc)
+    assert abs(c7["A"] - 0.05) < 1e-9, c7["A"]
+    assert abs(c7.sum() - 1) < 1e-9 and (c7 <= pc + 1e-9).all(), c7
+
+    # a {group: cap} mapping must leave unlisted groups alone
+    g2 = pd.Series({"A": "X", "B": "Y", "C": "Z"})
+    c8 = cap_weights(pd.Series({"A": .7, "B": .2, "C": .1}),
+                     groups=g2, group_cap={"X": 0.4})
+    assert abs(c8["A"] - 0.4) < 1e-9, c8
+    assert abs(c8.sum() - 1) < 1e-9
 
     g = pd.Series({"A": "X", "B": "X", "C": "Y"})
     c4 = cap_weights(pd.Series({"A": 0.5, "B": 0.4, "C": 0.1}),

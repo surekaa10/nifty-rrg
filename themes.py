@@ -68,9 +68,10 @@ RULES = {
     "CAPITAL MARKETS":       {"stock_cap": 0.20},
     "COMMODITIES":           {"stock_cap": 0.10},
     "CONGLOMERATE 50":       {"stock_cap": 0.10, "sector_cap": 0.23,
-                              "note": "doc caps the conglomerate GROUP at 23%; "
-                                      "group membership is not in the CSV, so "
-                                      "the industry column stands in"},
+                              "split": "conglomerate",
+                              "note": "23% cap is on the business GROUP, via the "
+                                      "CONGLOMERATE_GROUP hand map (NSE does not "
+                                      "publish the grouping)"},
     "CORE HOUSING":          {"stock_cap": 0.15},
     "CPSE":                  {"stock_cap": 0.20},
     "ENERGY":                {"stock_cap": 0.10, "sector_cap": 0.25},
@@ -85,9 +86,9 @@ RULES = {
     "INFRASTRUCTURE":        {"stock_cap": 0.20},
     "MNC":                   {"stock_cap": 0.10},
     "MOBILITY":              {"stock_cap": 0.08, "sector_cap": 0.20,
-                              "note": "doc caps stocks in listed basic industries "
-                                      "at 5% and all others at 8%; the 8% applies "
-                                      "to all here (basic-industry list not in CSV)"},
+                              "split": "mobility",
+                              "note": "5%/20% on the Table 2 basic industries, 8% "
+                                      "elsewhere, via the MOBILITY_BASIC hand map"},
     "NEW AGE CONSUMPTION":   {"stock_cap": 0.05},
     "NON-CYCLICAL CONSUMER": {"stock_cap": 0.10},
     "PSE":                   {"stock_cap": 0.33, "top_n": 3, "top_cap": 0.62},
@@ -100,6 +101,86 @@ RULES = {
     "TRANSPORT & LOGISTICS": {"stock_cap": 0.20},
     "WAVES":                 {"stock_cap": 0.05},
 }
+
+# --------------------------------------------------------------- hand maps
+# NSE's constituent CSV carries the *macro* sector ("Oil Gas & Consumable
+# Fuels"), not the *basic industry* ("Refineries & Marketing") that two indices
+# cap on. NSE serves basic industry only through an API that 403s/404s
+# server-side, so these two maps are hand-listed from the methodology document
+# and the constituent lists. Both drift when NSE reconstitutes - re-check them
+# against the CSVs after a review.
+
+# Nifty Mobility, Table 2: stocks in these basic industries are capped at 5%
+# (rather than 8%) and their corresponding sectors at 20% each.
+MOBILITY_TIGHT = {"Abrasives", "Bearings", "Castings & Forgings",
+                  "LPG/CNG/PNG/LNG Supplier", "Railway Wagons",
+                  "Refineries & Marketing", "Ship Building & Allied Services",
+                  "Gas Transmission/Marketing"}
+
+# Nifty Mobility constituents -> basic industry (Table 1 of that section).
+MOBILITY_BASIC = {
+    "ADANIPORTS": "Port & Port services", "ASHOKLEY": "Commercial Vehicles",
+    "BAJAJ-AUTO": "2/3 Wheelers", "BALKRISIND": "Tyres & Rubber Products",
+    "BHARATFORG": "Castings & Forgings", "BPCL": "Refineries & Marketing",
+    "BOSCHLTD": "Auto Components & Equipments",
+    "CONCOR": "Logistics Solution Provider", "EICHERMOT": "2/3 Wheelers",
+    "ETERNAL": "E-Commerce delivery", "GAIL": "Gas Transmission/Marketing",
+    "GMRAIRPORT": "Airport services", "HEROMOTOCO": "2/3 Wheelers",
+    "HINDPETRO": "Refineries & Marketing",
+    "HYUNDAI": "Passenger Cars & Utility Vehicles",
+    "IOC": "Refineries & Marketing", "IRCTC": "Tour, Travel Related Services",
+    "INDIGO": "Airline", "MRF": "Tyres & Rubber Products",
+    "M&M": "Passenger Cars & Utility Vehicles",
+    "MARUTI": "Passenger Cars & Utility Vehicles",
+    "PETRONET": "LPG/CNG/PNG/LNG Supplier", "RELIANCE": "Refineries & Marketing",
+    "MOTHERSON": "Auto Components & Equipments",
+    "SONACOMS": "Auto Components & Equipments", "SWIGGY": "E-Commerce delivery",
+    "TVSMOTOR": "2/3 Wheelers", "TMCV": "Commercial Vehicles",
+    "TMPV": "Passenger Cars & Utility Vehicles",
+    "TIINDIA": "Auto Components & Equipments",
+}
+
+# Nifty Conglomerate 50 constituents -> business group. The document caps the
+# GROUP at 23%; NSE does not publish the grouping, so this is read off promoter
+# ownership. The Goenka split (RPG Enterprises vs RP-Sanjiv Goenka) and the
+# Jindal split are judgement calls - NSE may group them differently.
+CONGLOMERATE_GROUP = {
+    "ADANIENT": "Adani", "ADANIGREEN": "Adani", "ADANIPORTS": "Adani",
+    "ADANIPOWER": "Adani", "AMBUJACEM": "Adani",
+    "ABCAPITAL": "Aditya Birla", "GRASIM": "Aditya Birla",
+    "HINDALCO": "Aditya Birla", "ULTRACEMCO": "Aditya Birla",
+    "IDEA": "Aditya Birla",
+    "BAJAJ-AUTO": "Bajaj", "BAJFINANCE": "Bajaj", "BAJAJFINSV": "Bajaj",
+    "BAJAJHLDNG": "Bajaj", "BAJAJHFL": "Bajaj",
+    "CESC": "RP-Sanjiv Goenka", "PCBL": "RP-Sanjiv Goenka",
+    "FSL": "RP-Sanjiv Goenka", "SAREGAMA": "RP-Sanjiv Goenka",
+    "CEATLTD": "RPG Enterprises", "KEC": "RPG Enterprises",
+    "ZENSARTECH": "RPG Enterprises",
+    "CGPOWER": "Murugappa", "CHOLAHLDNG": "Murugappa", "CHOLAFIN": "Murugappa",
+    "COROMANDEL": "Murugappa", "TIINDIA": "Murugappa",
+    "GODREJCP": "Godrej", "GODREJIND": "Godrej", "GODREJPROP": "Godrej",
+    "JSWENERGY": "JSW", "JSWINFRA": "JSW", "JSWSTEEL": "JSW",
+    "JSL": "Jindal", "JINDALSTEL": "Jindal",
+    "JUBLFOOD": "Jubilant", "JUBLINGREA": "Jubilant", "JUBLPHARMA": "Jubilant",
+    "LTF": "L&T", "LTTS": "L&T", "LTM": "L&T", "LT": "L&T",
+    "M&MFIN": "Mahindra", "M&M": "Mahindra", "TECHM": "Mahindra",
+    "TCS": "Tata", "TMCV": "Tata", "TATASTEEL": "Tata", "TITAN": "Tata",
+    "TRENT": "Tata",
+}
+
+
+def mobility_caps(syms):
+    """(per-stock cap Series, basic-industry Series, {industry: 20% cap}).
+
+    Mobility is the one index whose stock cap is not uniform: 5% inside the
+    Table 2 basic industries, 8% everywhere else, with those sectors held to
+    20% each. Symbols missing from the map fall back to the looser 8%.
+    """
+    import pandas as pd
+    basic = pd.Series({s: MOBILITY_BASIC.get(s, "Other") for s in syms})
+    cap = pd.Series({s: (0.05 if basic[s] in MOBILITY_TIGHT else 0.08)
+                     for s in syms})
+    return cap, basic, {b: 0.20 for b in MOBILITY_TIGHT}
 
 
 def parse(text: str) -> list[dict]:
@@ -169,6 +250,17 @@ def demo():
     # every fetchable theme must carry a construction rule, and vice versa
     assert set(RULES) == set(CSV), set(RULES) ^ set(CSV)
     assert all(0 < r["stock_cap"] <= 1 for r in RULES.values()), "bad stock cap"
+    # the two hand maps must stay aligned with the rules that consume them
+    assert RULES["MOBILITY"]["split"] == "mobility"
+    # Table 2 is a standing list; only some of it appears in any given
+    # membership, so overlap is what matters, not coverage either way.
+    assert MOBILITY_TIGHT & set(MOBILITY_BASIC.values()), "no tight industry mapped"
+    cap, basic, gc = mobility_caps(["RELIANCE", "MARUTI", "NOTALISTED"])
+    assert cap["RELIANCE"] == 0.05 and cap["MARUTI"] == 0.08, dict(cap)
+    assert cap["NOTALISTED"] == 0.08, "unmapped symbol must take the loose cap"
+    assert basic["RELIANCE"] == "Refineries & Marketing"
+    assert gc["Refineries & Marketing"] == 0.20
+    assert len(set(CONGLOMERATE_GROUP.values())) >= 10, "groups look collapsed"
     print("ok")
 
 
