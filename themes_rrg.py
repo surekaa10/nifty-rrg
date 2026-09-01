@@ -10,9 +10,11 @@ right-of-centre or turning up, at least one of its themes is too, and the stock
 itself is. Sector answers "is the money here", theme answers "is the story
 here", the stock answers "is this the name doing the work".
 
-ponytail: themes are equal-weight baskets of NSE's published membership (see
-themes.py) - no free-float weights, so a theme carried by one mega-cap reads
-flatter here than its real index does.
+Themes are rebuilt the way NSE builds them: free-float market-cap weighted,
+capped per `themes.RULES`, rebalanced semi-annually (see weights.py, and the
+limits documented there). The six sector indices Yahoo has no history for are
+rebuilt the same way, under the sectoral standard of a 33% stock cap and a 62%
+cumulative cap on the top 3.
 """
 from __future__ import annotations
 
@@ -24,12 +26,16 @@ import numpy as np
 import pandas as pd
 
 import themes as th
-from nifty_rrg import BENCHMARK, basket, nse, quadrant, rrg_coords, strip
+import weights as wt
+from nifty_rrg import BENCHMARK, nse, quadrant, rrg_coords, strip
 from sectors import CONSTITUENTS, SECTOR_INDEX, SECTORS
 
 HERE = Path(__file__).parent
 PX_CACHE = HERE / "px_weekly.pkl"
 STRONG = ("LEADING", "IMPROVING")
+# "All sectoral indices are capped as per Index characteristics" - the document
+# states 33% / top-3 62% explicitly for Nifty Healthcare; it is the sectoral norm.
+SECTOR_RULE = {"stock_cap": 0.33, "top_n": 3, "top_cap": 0.62}
 ORDER = {"LEADING": 0, "IMPROVING": 1, "WEAKENING": 2, "LAGGING": 3}
 
 
@@ -49,19 +55,29 @@ def prices(symbols, period="3y", interval="1wk", refresh=False) -> pd.DataFrame:
     return raw
 
 
-def series(members, px, index_of=None):
-    """One column per group: its real index if Yahoo has one, else a basket."""
-    index_of = index_of or {}
+def series(members, px, shares, index_of=None, rules=None, industries=None):
+    """One column per group: its real NSE index if Yahoo has one, else the
+    index rebuilt from constituents the way the methodology document specifies.
+
+    `members` is {name: [symbols]}, `rules` is {name: cap rule}, `industries`
+    is {name: Series(symbol -> industry)} for the groups carrying a sector cap.
+    """
+    index_of, rules, industries = index_of or {}, rules or {}, industries or {}
     out, src = {}, {}
     for name, syms in members.items():
         idx = index_of.get(name)
         if idx and idx in px.columns:
-            out[name], src[name] = px[idx], "index"
+            out[name], src[name] = px[idx], "NSE index"
             continue
         cols = [nse(s) for s in syms if nse(s) in px.columns]
-        if len(cols) >= 5:
-            b = px[cols].dropna()
-            out[name], src[name] = basket(b), "basket(%d)" % len(cols)
+        if len(cols) < 5:
+            continue
+        rule = rules.get(name, SECTOR_RULE)
+        ind = industries.get(name)
+        lvl = wt.index_level(px[cols], shares, rule, ind)
+        if not lvl.empty:
+            out[name] = lvl
+            src[name] = "ff-cap %d@%.1f%%" % (len(cols), 100 * rule["stock_cap"])
     return pd.DataFrame(out), pd.Series(src, name="src")
 
 
@@ -102,7 +118,10 @@ def crosswind(stock_q, sector_of, theme_of, keep=STRONG):
 
 
 def run(a):
-    themes = th.fetch(a.refresh)
+    raw_themes = th.fetch(a.refresh)
+    themes = {k: th.symbols(v) for k, v in raw_themes.items()}
+    industries = {k: pd.Series({nse(r["symbol"]): r["industry"] for r in v})
+                  for k, v in raw_themes.items()}
     sectors = {s: CONSTITUENTS[s] for s in SECTORS}
     universe = ({nse(s) for v in themes.values() for s in v}
                 | {nse(s) for v in sectors.values() for s in v}
@@ -111,8 +130,14 @@ def run(a):
     bench = px[BENCHMARK].dropna()
     px = px.loc[bench.index].ffill()
 
-    tpx, tsrc = series(themes, px)
-    spx, ssrc = series(sectors, px, SECTOR_INDEX)
+    stock_cols = [c for c in px.columns
+                  if c != BENCHMARK and c not in set(SECTOR_INDEX.values())]
+    shares = wt.float_shares(stock_cols, refresh=a.refresh)
+    print("free-float shares resolved for %d/%d stocks"
+          % (len(shares), len(stock_cols)))
+
+    tpx, tsrc = series(themes, px, shares, rules=th.RULES, industries=industries)
+    spx, ssrc = series(sectors, px, shares, SECTOR_INDEX)
     tr, tm = rrg_coords(tpx, bench, a.window, a.mom, a.smooth)
     sr, sm = rrg_coords(spx, bench, a.window, a.mom, a.smooth)
 

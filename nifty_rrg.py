@@ -121,9 +121,20 @@ def sector_symbols(picked):
     return out
 
 
+# "All sectoral indices are capped as per Index characteristics" — the
+# methodology document states 33% / top-3 62% explicitly for Nifty Healthcare,
+# and that is the sectoral norm. See weights.py for what this can and cannot
+# reproduce of NSE's actual construction.
+SECTOR_RULE = {"stock_cap": 0.33, "top_n": 3, "top_cap": 0.62}
+
+
 def sector_series(picked, px):
-    """One column per chosen sector — index level, or equal-weight basket."""
-    out = {}
+    """One column per chosen sector — the real NSE index, or the index rebuilt
+    from constituents the way the methodology document specifies: free-float
+    market-cap weighted and capped, not equal weight."""
+    import weights as wt
+
+    out, members = {}, {}
     for k in picked:
         if k in SECTOR_INDEX:
             col = SECTOR_INDEX[k]
@@ -132,7 +143,15 @@ def sector_series(picked, px):
         else:
             cols = [nse(t) for t in CONSTITUENTS[k] if nse(t) in px.columns]
             if cols:
-                out[k] = basket(px[cols].dropna())
+                members[k] = cols
+    # only ask for float on baskets index_level can actually build (it needs 5+),
+    # so a tiny selection never triggers a network round-trip
+    need = sorted({c for v in members.values() if len(v) >= 5 for c in v})
+    shares = wt.float_shares(need) if need else {}
+    for k, cols in members.items():
+        lvl = wt.index_level(px[cols].dropna(), shares, SECTOR_RULE)
+        # a sector whose float data Yahoo withheld still deserves a dot
+        out[k] = lvl if not lvl.empty else basket(px[cols].dropna())
     return pd.DataFrame(out)
 
 
@@ -317,7 +336,7 @@ def app():
         extra = pd.Series([SECTOR_OF.get(i, "—") for i in rs_ratio.columns],
                           index=rs_ratio.columns, name="Sector")
     elif mode == "Sectors":
-        extra = pd.Series(["NSE index" if i in SECTOR_INDEX else "basket"
+        extra = pd.Series(["NSE index" if i in SECTOR_INDEX else "ff-cap 33%"
                            for i in rs_ratio.columns],
                           index=rs_ratio.columns, name="Source")
     table = quadrant_table(rs_ratio, rs_mom, extra)
@@ -327,8 +346,9 @@ def app():
     st.caption(
         "Dots rotate clockwise: Improving → Leading → Weakening → Lagging. "
         "Position is strength **relative to the benchmark**, not absolute return. "
-        "Source: Yahoo Finance, auto-adjusted closes. Sectors marked *basket* are "
-        "equal-weight constituent baskets — Yahoo has no history for those indices."
+        "Source: Yahoo Finance, auto-adjusted closes. Sectors marked *ff-cap* are "
+        "rebuilt from constituents — free-float market-cap weighted and capped "
+        "per the NSE methodology — because Yahoo has no history for those indices."
     )
 
     if mode == "Sectors":

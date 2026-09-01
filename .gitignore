@@ -5,3 +5,4 @@ __pycache__/
 px_weekly.pkl
 themes_cache.json
 crosswind_*.csv
+float_cache.json
