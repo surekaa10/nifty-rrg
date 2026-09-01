@@ -35,12 +35,15 @@ CSV = {
     "CORE HOUSING": "ind_niftycorehousing_list.csv",
     "CPSE": "ind_niftycpselist.csv",
     "ENERGY": "ind_niftyenergylist.csv",
+    "EV & NEW AGE AUTO": "ind_niftyEv_NewAgeAutomotive_list.csv",
+    "HOUSING": "ind_niftyhousing_list.csv",
     "INDIA CONSUMPTION": "ind_niftyconsumptionlist.csv",
     "INDIA DEFENCE": "ind_niftyindiadefence_list.csv",
     "INDIA DIGITAL": "ind_niftyindiadigital_list.csv",
     "INDIA INTERNET": "ind_niftyindiainternet_list.csv",
     "INDIA MANUFACTURING": "ind_niftyindiamanufacturing_list.csv",
     "INDIA TOURISM": "ind_niftyindiatourism_list.csv",
+    "INFRA & LOGISTICS": "ind_niftyIndiaInfrastructure_Logistics_list.csv",
     "INFRASTRUCTURE": "ind_niftyinfralist.csv",
     "MNC": "ind_niftymnclist.csv",
     "MOBILITY": "ind_niftymobility_list.csv",
@@ -55,7 +58,7 @@ CSV = {
     "WAVES": "ind_niftywaves_list.csv",
 }
 # Published by NSE but no CSV slug found - add by hand if one turns up.
-UNRESOLVED = ["HOUSING", "INFRA & LOGISTICS", "EV & NEW AGE AUTOMOTIVE"]
+UNRESOLVED = []
 
 # Construction rules, per the methodology document. Every index is weighted by
 # free-float market capitalisation; these are the caps applied on top.
@@ -76,6 +79,12 @@ RULES = {
     "CORE HOUSING":          {"stock_cap": 0.15},
     "CPSE":                  {"stock_cap": 0.20},
     "ENERGY":                {"stock_cap": 0.10, "sector_cap": 0.25},
+    "EV & NEW AGE AUTO":     {"stock_cap": 0.08,
+                              "note": "doc caps Group A (EV/new-age vehicle "
+                                      "makers) at 40% aggregate and 8% a stock, "
+                                      "all others at 4%; Group A membership is "
+                                      "not in the CSV, so 8% applies to all"},
+    "HOUSING":               {"stock_cap": 0.10, "sector_cap": 0.25},
     "INDIA CONSUMPTION":     {"stock_cap": 0.10},
     "INDIA DEFENCE":         {"stock_cap": 0.20},
     "INDIA DIGITAL":         {"stock_cap": 0.075, "sector_cap": 0.50},
@@ -84,6 +93,7 @@ RULES = {
                               "sector_floor": {"Automobile and Auto Components": 0.20,
                                                "Capital Goods": 0.20}},
     "INDIA TOURISM":         {"stock_cap": 0.20},
+    "INFRA & LOGISTICS":     {"stock_cap": 0.05, "sector_cap": 0.20},
     "INFRASTRUCTURE":        {"stock_cap": 0.20},
     "MNC":                   {"stock_cap": 0.10},
     "MOBILITY":              {"stock_cap": 0.08, "sector_cap": 0.20,
@@ -206,10 +216,15 @@ def parse(text: str) -> list[dict]:
     Read with the csv module, not split(","): company names are quoted and
     contain commas ("Zee Entertainment, Ltd."), which shifts every column
     after the first.
+
+    A file is judged real by having a Symbol column, not by its header text.
+    NSE heads most lists "Company Name" but Nifty Housing "Company", and keying
+    on the wording silently discarded that whole index. Any byte-order mark
+    lands in the first field name, which is not one we read.
     """
     text = text.lstrip()
-    if not text.startswith("Company Name"):
-        return []                      # NSE serves its 404 page with status 200
+    if text.startswith("<"):           # NSE serves its 404 page with status 200
+        return []
     rows = csv.DictReader(io.StringIO(text))
     if "Symbol" not in (rows.fieldnames or []):
         return []
@@ -257,6 +272,10 @@ def demo():
     assert parse(good) == [{"symbol": "FOO", "industry": "Power"}]
     assert symbols(parse(good)) == ["FOO"]
     assert parse("<!DOCTYPE html><html>404") == [], "NSE 404 page must parse empty"
+    # Nifty Housing heads its file "Company", not "Company Name"
+    alt = ("Company,Industry,Symbol,Series,ISIN Code\n"
+           "Bar Ltd.,Realty,BAR,EQ,INE3\n")
+    assert symbols(parse(alt)) == ["BAR"], parse(alt)
     assert parse("") == []
     # a quoted comma inside the company name must not shift the Symbol column
     quoted = ("Company Name,Industry,Symbol,Series,ISIN Code\n"

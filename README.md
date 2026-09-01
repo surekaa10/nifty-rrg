@@ -120,8 +120,10 @@ older indices use `ind_<slug>list.csv`, newer ones `ind_<slug>_list.csv`. NSE
 serves its 404 page with HTTP 200, so a fetch is only accepted when the body
 actually starts with `Company Name`.
 
-Three published themes have no discoverable CSV slug and are listed in
-`themes.UNRESOLVED`: Housing, Infra & Logistics, EV & New Age Automotive.
+All 27 thematic indices resolve. A file is judged real by having a `Symbol`
+column rather than by its header text -- NSE heads most lists `Company Name`
+but Nifty Housing `Company`, and keying on the wording silently discarded that
+index entirely.
 
 ### How the indices are constructed
 
@@ -181,6 +183,35 @@ four than a level is.
   CPSE / Railways PSU share most of their constituents, so PSU energy names
   score high on overlap alone. It is a tiebreak, not independent confirmation.
 - The last weekly bar is unclosed -- a quadrant can un-cross itself by Friday.
+
+## Is the construction good enough? (`robustness.py`)
+
+An RRG reads rotation, not levels, so the useful question is not "does this
+match NSE's published series" -- reconstructing NSE's real rebalance history is
+a large job with no payoff here. The question is whether the construction
+choice changes the signal you would trade.
+
+```
+python robustness.py           # quadrant stability across constructions
+python robustness.py --full    # per-theme detail
+```
+
+It rebuilds every theme five ways on identical prices -- the document's caps,
+equal weight, free-float with no caps, a half-period rebalance offset, and
+annual rebalancing -- and reports where they disagree. Current answer:
+
+- **Quadrant is identical across all five constructions for 19 of 27 themes
+  (70%)**, median RS-Ratio spread 0.45.
+- **Rotation direction over four weeks agrees for only 13 of 27 (48%)**, even
+  after treating drift under 0.15 as flat.
+
+So the quadrant is reasonably robust and the short-term drift is not. Read the
+quadrant; do not over-trust the 4-week direction on a single construction.
+
+The eight themes whose quadrant moves are the wide, breadth-heavy baskets --
+Waves, Services, Rural, MNC, Capital Markets, Housing, India Internet, New Age
+Consumption -- which is exactly where equal weight and cap weight diverge
+most. Treat those with lower confidence.
 
 ## Reading it as a trade
 
