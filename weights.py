@@ -48,7 +48,8 @@ REBAL_BARS = 26                        # semi-annual, on weekly bars
 
 
 def cap_weights(w: pd.Series, stock_cap=None, groups=None, group_cap=None,
-                top_n=None, top_cap=None, rounds=100) -> pd.Series:
+                top_n=None, top_cap=None, group_floor=None,
+                min_names=4, rounds=100) -> pd.Series:
     """Normalise to 1, then enforce the caps by NSE's redistribution rule.
 
     Excess weight above a cap is taken off the capped names and handed to the
@@ -59,6 +60,10 @@ def cap_weights(w: pd.Series, stock_cap=None, groups=None, group_cap=None,
     caps different constituents differently (Nifty Mobility does). `group_cap`
     is a single number applied to every group, or a {group: cap} mapping when
     only some groups are capped (again Mobility - only the Table 2 sectors).
+
+    `group_floor` is a {group: minimum} mapping - India Manufacturing guarantees
+    Automobile and Capital Goods 20% each. A floor is relaxed for any group
+    holding fewer than `min_names` constituents, as that index specifies.
     """
     w = w[w > 0].astype(float)
     if w.empty:
@@ -99,6 +104,23 @@ def cap_weights(w: pd.Series, stock_cap=None, groups=None, group_cap=None,
                 if w[cool].sum() > 0:
                     w[cool] += excess * w[cool] / w[cool].sum()
                     moved = True
+        if groups is not None and group_floor:
+            gr = groups.reindex(w.index)
+            g = w.groupby(gr).sum()
+            # the document relaxes a floor when the sector has too few names
+            live = {k: f for k, f in group_floor.items()
+                    if (gr == k).sum() >= min_names}
+            cold = {k: f for k, f in live.items() if g.get(k, 0) < f - 1e-12}
+            spare = ~gr.isin(live)
+            if cold and spare.any() and sum(live.values()) < 1:
+                deficit = float(sum(f - g.get(k, 0) for k, f in cold.items()))
+                if w[spare].sum() > deficit:
+                    for name, f in cold.items():
+                        m = gr == name
+                        w[m] = w[m] * f / g[name] if g[name] > 0 else f / m.sum()
+                    w[spare] -= deficit * w[spare] / w[spare].sum()
+                    moved = True
+
         # a top-N cumulative cap is only satisfiable when it exceeds the
         # equal-weight share of those N names; below that, nothing converges.
         if (top_n and top_cap is not None and len(w) > top_n
@@ -163,7 +185,7 @@ def index_level(px: pd.DataFrame, shares: dict, rule: dict,
         if i % rebal == 0:
             w = cap_weights(ff * row, rule.get("stock_cap"), groups,
                             rule.get("sector_cap"), rule.get("top_n"),
-                            rule.get("top_cap"))
+                            rule.get("top_cap"), rule.get("sector_floor"))
             units = (w * level / row.reindex(w.index)).dropna()
         level = float((units * row.reindex(units.index)).sum())
         out.append(level)
@@ -216,6 +238,20 @@ def demo():
     c6 = cap_weights(pd.Series({"A": .4, "B": .3, "C": .2, "D": .1}),
                      top_n=3, top_cap=0.62)
     assert abs(c6.sum() - 1) < 1e-9 and c6.notna().all()
+
+    # a floor must lift an under-weight sector and take it from the others
+    gf = pd.Series({"A": "AUTO", "B": "AUTO", "C": "AUTO", "D": "AUTO",
+                    "E": "OTHER", "F": "OTHER", "G": "OTHER", "H": "OTHER"})
+    raw = pd.Series({"A": .02, "B": .02, "C": .02, "D": .02,
+                     "E": .23, "F": .23, "G": .23, "H": .23})
+    c9 = cap_weights(raw, groups=gf, group_floor={"AUTO": 0.20})
+    assert abs(c9.sum() - 1) < 1e-9
+    assert abs(c9.groupby(gf).sum()["AUTO"] - 0.20) < 1e-6, c9.groupby(gf).sum()
+    # ... but is relaxed when the sector is below the minimum name count
+    gf2 = pd.Series({"A": "AUTO", "E": "OTHER", "F": "OTHER", "G": "OTHER"})
+    c10 = cap_weights(pd.Series({"A": .04, "E": .32, "F": .32, "G": .32}),
+                      groups=gf2, group_floor={"AUTO": 0.20}, min_names=4)
+    assert c10["A"] < 0.10, "floor should have been relaxed for a 1-name sector"
 
     # a float-weighted index must track the big name, not the small one
     idx = pd.date_range("2024-01-01", periods=30, freq="W")

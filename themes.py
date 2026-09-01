@@ -63,6 +63,7 @@ UNRESOLVED = ["HOUSING", "INFRA & LOGISTICS", "EV & NEW AGE AUTOMOTIVE"]
 #   sector_cap    - maximum weight of any one industry (grouped on the Industry
 #                   column NSE ships in the constituent CSV)
 #   top_n/top_cap - cumulative cap on the N largest constituents
+#   sector_floor  - {industry: minimum aggregate weight}
 #   note          - where this simplifies what the document specifies
 RULES = {
     "CAPITAL MARKETS":       {"stock_cap": 0.20},
@@ -80,8 +81,8 @@ RULES = {
     "INDIA DIGITAL":         {"stock_cap": 0.075, "sector_cap": 0.50},
     "INDIA INTERNET":        {"stock_cap": 0.20},
     "INDIA MANUFACTURING":   {"stock_cap": 0.05,
-                              "note": "doc also sets a 20% MINIMUM to certain "
-                                      "manufacturing sectors; floors not applied"},
+                              "sector_floor": {"Automobile and Auto Components": 0.20,
+                                               "Capital Goods": 0.20}},
     "INDIA TOURISM":         {"stock_cap": 0.20},
     "INFRASTRUCTURE":        {"stock_cap": 0.20},
     "MNC":                   {"stock_cap": 0.10},
@@ -92,9 +93,9 @@ RULES = {
     "NEW AGE CONSUMPTION":   {"stock_cap": 0.05},
     "NON-CYCLICAL CONSUMER": {"stock_cap": 0.10},
     "PSE":                   {"stock_cap": 0.33, "top_n": 3, "top_cap": 0.62},
-    "RAILWAYS PSU":          {"stock_cap": 0.20,
-                              "note": "doc caps the core group at 80% and non-core "
-                                      "at 20%; that split is not in the CSV"},
+    "RAILWAYS PSU":          {"stock_cap": 0.20, "split": "railways",
+                              "note": "core (Ministry of Railways) 80% / non-core "
+                                      "20%, via the RAILWAYS_CORE map"},
     "RURAL":                 {"stock_cap": 0.10, "sector_cap": 0.25},
     "SERVICES":              {"stock_cap": 0.33, "top_n": 3, "top_cap": 0.62},
     "SUGAR & ETHANOL":       {"stock_cap": 0.15},
@@ -167,6 +168,22 @@ CONGLOMERATE_GROUP = {
     "TCS": "Tata", "TMCV": "Tata", "TATASTEEL": "Tata", "TITAN": "Tata",
     "TRENT": "Tata",
 }
+
+
+# Nifty India Railways PSU: "Core Group: Public Sector Undertakings and other
+# Organizations functioning under Ministry of Railways". Everything else in the
+# index is non-core - PSUs under other ministries that supply or service the
+# railways. Administrative ministry is public record, so this is a fact map,
+# not a judgement call like CONGLOMERATE_GROUP.
+RAILWAYS_CORE = {"IRCTC", "IRFC", "IRCON", "RVNL", "RITES", "RAILTEL", "CONCOR"}
+
+
+def railways_groups(syms):
+    """(core/non-core Series, {group: aggregate cap}) for Nifty Railways PSU."""
+    import pandas as pd
+    grp = pd.Series({s: ("core" if s in RAILWAYS_CORE else "non-core")
+                     for s in syms})
+    return grp, {"core": 0.80, "non-core": 0.20}
 
 
 def mobility_caps(syms):
@@ -261,6 +278,10 @@ def demo():
     assert basic["RELIANCE"] == "Refineries & Marketing"
     assert gc["Refineries & Marketing"] == 0.20
     assert len(set(CONGLOMERATE_GROUP.values())) >= 10, "groups look collapsed"
+    g, gc = railways_groups(["IRCTC", "ONGC", "RVNL"])
+    assert list(g) == ["core", "non-core", "core"], list(g)
+    assert gc == {"core": 0.80, "non-core": 0.20}
+    assert RULES["INDIA MANUFACTURING"]["sector_floor"]["Capital Goods"] == 0.20
     print("ok")
 
 

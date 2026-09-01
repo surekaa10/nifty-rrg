@@ -68,6 +68,10 @@ def split_rule(name, syms, rule, industry):
         cap.index = [nse(i) for i in cap.index]
         basic.index = [nse(i) for i in basic.index]
         return {**rule, "stock_cap": cap, "sector_cap": gcap}, basic
+    if kind == "railways":
+        grp, gcap = th.railways_groups(syms)
+        grp.index = [nse(i) for i in grp.index]
+        return {**rule, "sector_cap": gcap}, grp
     if kind == "conglomerate":
         grp = pd.Series({nse(x): th.CONGLOMERATE_GROUP.get(x, "Other")
                          for x in syms})
@@ -239,6 +243,11 @@ def demo():
     _, cg = split_rule("CONGLOMERATE 50", ["TCS", "ADANIENT"],
                        th.RULES["CONGLOMERATE 50"], None)
     assert cg["TCS.NS"] == "Tata" and cg["ADANIENT.NS"] == "Adani", cg
+    # Railways splits on administrative ministry, not sector
+    rr, rg = split_rule("RAILWAYS PSU", ["IRCTC", "ONGC"],
+                        th.RULES["RAILWAYS PSU"], None)
+    assert rg["IRCTC.NS"] == "core" and rg["ONGC.NS"] == "non-core", rg
+    assert rr["sector_cap"] == {"core": 0.80, "non-core": 0.20}
     # an ordinary index is passed through untouched
     r2, i2 = split_rule("WAVES", ["ZEEL"], th.RULES["WAVES"], "keepme")
     assert r2 is th.RULES["WAVES"] and i2 == "keepme"

@@ -162,9 +162,14 @@ different quadrant** under the document's weighting than under equal weight.
   hand-maps both: `MOBILITY_BASIC` (Table 2 of that section -- 5% on those
   stocks and 20% on their sectors, 8% elsewhere) and `CONGLOMERATE_GROUP`
   (business group, for the 23% group cap). Re-check both after an NSE review.
-- Two caps are still not applied: Railways' core/non-core 80-20 split and
-  Manufacturing's 20% sector floors. Both are flagged in `RULES[...]["note"]`
-  and printed by `--rules`.
+  Railways PSU splits on administrative ministry -- `RAILWAYS_CORE` lists the
+  PSUs under the Ministry of Railways, which the document defines as the core
+  group (80%) against non-core (20%). Without that cap the index is effectively
+  an oil-and-power index: the actual railway companies carry only **12%** of
+  free-float weight, because ONGC, NTPC, BPCL and SAIL dwarf them.
+- India Manufacturing's 20% sector floors (Automobile and Auto Components,
+  Capital Goods) read straight off the CSV's Industry column, and are relaxed
+  for a sector holding fewer than four names, as the document specifies.
 
 So index **levels** will not match NSE's published values. Quadrant and rotation
 direction -- what an RRG is actually read for -- are far less sensitive to all
